@@ -47,7 +47,7 @@ def parse_args():
   parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
   parser.add_argument('--dataset', dest='dataset',
                       help='training dataset',
-                      default='pascal_voc', type=str)
+                      default='bootch', type=str)
   parser.add_argument('--cfg', dest='cfg_file',
                       help='optional config file',
                       default='cfgs/vgg16.yml', type=str)
@@ -80,10 +80,10 @@ def parse_args():
                       default=1, type=int)
   parser.add_argument('--checkepoch', dest='checkepoch',
                       help='checkepoch to load network',
-                      default=1, type=int)
+                      default=2, type=int)
   parser.add_argument('--checkpoint', dest='checkpoint',
                       help='checkpoint to load network',
-                      default=10021, type=int)
+                      default=8579, type=int)
   parser.add_argument('--vis', dest='vis',
                       help='visualization mode',
                       action='store_true')
@@ -125,7 +125,12 @@ if __name__ == '__main__':
       args.imdb_name = "vg_150-50-50_minitrain"
       args.imdbval_name = "vg_150-50-50_minival"
       args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]']
-
+  elif args.dataset == "bootch":
+      # train sizes: train, smalltrain, minitrain
+      # train scale: ['150-50-20', '150-50-50', '500-150-80', '750-250-150', '1750-700-450', '1600-400-20']
+      args.imdb_name = "bootch_minitrain"
+      args.imdbval_name = "bootch_minival"
+      args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '2']
   args.cfg_file = "cfgs/{}_ls.yml".format(args.net) if args.large_scale else "cfgs/{}.yml".format(args.net)
 
   if args.cfg_file is not None:
@@ -137,7 +142,7 @@ if __name__ == '__main__':
   pprint.pprint(cfg)
 
   cfg.TRAIN.USE_FLIPPED = False
-  imdb, roidb, ratio_list, ratio_index = combined_roidb(args.imdbval_name, False)
+  imdb, roidb, ratio_list, ratio_index = combined_roidb("bootch_minitrain", False)
   imdb.competition_mode(on=True)
 
   print('{:d} roidb entries'.format(len(roidb)))
@@ -225,7 +230,8 @@ if __name__ == '__main__':
 
   fasterRCNN.eval()
   empty_array = np.transpose(np.array([[],[],[],[],[]]), (1,0))
-  for i in range(num_images):
+  from tqdm import tqdm
+  for i in tqdm(range(num_images)):
 
       data = next(data_iter)
       with torch.no_grad():
@@ -283,7 +289,7 @@ if __name__ == '__main__':
               cls_boxes = pred_boxes[inds, :]
             else:
               cls_boxes = pred_boxes[inds][:, j * 4:(j + 1) * 4]
-            
+
             cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
             # cls_dets = torch.cat((cls_boxes, cls_scores), 1)
             cls_dets = cls_dets[order]
@@ -313,8 +319,8 @@ if __name__ == '__main__':
       sys.stdout.flush()
 
       if vis:
-          cv2.imwrite('result.png', im2show)
-          pdb.set_trace()
+          cv2.imwrite(f'/home/indoordesk/Desktop/images/result_{i}.png', im2show)
+          #pdb.set_trace()
           #cv2.imshow('test', im2show)
           #cv2.waitKey(0)
 
