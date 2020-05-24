@@ -50,7 +50,7 @@ def parse_args():
   parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
   parser.add_argument('--dataset', dest='dataset',
                       help='training dataset',
-                      default='pascal_voc', type=str)
+                      default='bootch', type=str)
   parser.add_argument('--cfg', dest='cfg_file',
                       help='optional config file',
                       default='cfgs/vgg16.yml', type=str)
@@ -83,10 +83,10 @@ def parse_args():
                       default=1, type=int)
   parser.add_argument('--checkepoch', dest='checkepoch',
                       help='checkepoch to load network',
-                      default=1, type=int)
+                      default=2, type=int)
   parser.add_argument('--checkpoint', dest='checkpoint',
                       help='checkpoint to load network',
-                      default=10021, type=int)
+                      default=8579, type=int)
   parser.add_argument('--bs', dest='batch_size',
                       help='batch_size',
                       default=1, type=int)
@@ -97,7 +97,12 @@ def parse_args():
                       help='webcam ID number',
                       default=-1, type=int)
 
+
   args = parser.parse_args()
+  args.imdb_name = "bootch_minitrain"
+  args.imdbval_name = "bootch_minival"
+  args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '2']
+  #args.cfg_file = "cfgs/{}_ls.yml".format(args.net) if args.large_scale else "cfgs/{}.yml".format(args.net)
   return args
 
 lr = cfg.TRAIN.LEARNING_RATE
@@ -165,13 +170,8 @@ if __name__ == '__main__':
   load_name = os.path.join(input_dir,
     'faster_rcnn_{}_{}_{}.pth'.format(args.checksession, args.checkepoch, args.checkpoint))
 
-  pascal_classes = np.asarray(['__background__',
-                       'aeroplane', 'bicycle', 'bird', 'boat',
-                       'bottle', 'bus', 'car', 'cat', 'chair',
-                       'cow', 'diningtable', 'dog', 'horse',
-                       'motorbike', 'person', 'pottedplant',
-                       'sheep', 'sofa', 'train', 'tvmonitor'])
-
+  #pascal_classes = np.asarray(['__background__', 'person'])
+  pascal_classes = ('__background__', 'person')
   # initilize the network here.
   if args.net == 'vgg16':
     fasterRCNN = vgg16(pascal_classes, pretrained=False, class_agnostic=args.class_agnostic)
@@ -362,8 +362,8 @@ if __name__ == '__main__':
           sys.stdout.flush()
 
       if vis and webcam_num == -1:
-          # cv2.imshow('test', im2show)
-          # cv2.waitKey(0)
+          cv2.imshow('test', im2show)
+          cv2.waitKey(0)
           result_path = os.path.join(args.image_dir, imglist[num_images][:-4] + "_det.jpg")
           cv2.imwrite(result_path, im2show)
       else:

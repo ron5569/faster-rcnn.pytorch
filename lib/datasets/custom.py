@@ -6,16 +6,27 @@ import xml.etree.ElementTree as ET
 import scipy.sparse
 from os.path import join
 
+from datasets.voc_eval import voc_eval
+
+
 class custom(imdb):
-    def __init__(self, name):
+    def __init__(self, name, is_sort = False):
         imdb.__init__(self, name)
-        self._data_path = "/home/indoordesk/Pictures"
-        self._data_path = "/mnt/usb-Seagate_Portable_NAA5TXW7-0:0-part2/drone_db_mixed/train/"
+        self._data_path = "/media/indoordesk/653ce34c-0c14-4427-8029-be7afe6d1989/test"
+        #self._data_path = "/mnt/usb-Seagate_Portable_NAA5TXW7-0:0-part2/drone_db_mixed/train/"
         self._classes = ('__background__', 'person' # always index 0
                          )
         self._class_to_ind = dict(zip(self.classes, range(self.num_classes)))
-        self._image_ext = '.png'
-        self._image_index = self._load_image_set_index()
+        self._image_ext = '.jpg'
+        self._image_index = self._load_image_set_index(is_sort)
+        # PASCAL specific config options
+        self.config = {'cleanup': True,
+                       'use_salt': True,
+                       'use_diff': False,
+                       'matlab_eval': False,
+                       'rpn_file': None,
+                       'min_size': 2}
+
     def gt_roidb(self):
         """
         Return the database of ground-truth regions of interest.
@@ -28,7 +39,7 @@ class custom(imdb):
 
         return gt_roidb
 
-    def _load_image_set_index(self):
+    def _load_image_set_index(self, is_sort):
         """
         Load the indexes listed in this dataset's image set file.
         """
@@ -36,6 +47,8 @@ class custom(imdb):
         # self._devkit_path + /VOCdevkit2007/VOC2007/ImageSets/Main/val.txt
         image_index = os.listdir(join(self._data_path, 'Annotations'))
         image_index = list(map(lambda x: x.replace(".xml", ""), image_index))
+        if is_sort:
+            image_index.sort()
         return image_index
 
 
@@ -119,4 +132,84 @@ class custom(imdb):
 
         all_boxes[class][image] = [] or np.array of shape #dets x 5
         """
-        raise NotImplementedError
+        self._write_voc_results_file(all_boxes)
+        self._do_python_eval(output_dir)
+        if self.config['matlab_eval']:
+            self._do_matlab_eval(output_dir)
+        if self.config['cleanup']:
+            for cls in self._classes:
+                if cls == '__background__':
+                    continue
+                filename = self._get_voc_results_file_template().format(cls)
+                os.remove(filename)
+
+    def _write_voc_results_file(self, all_boxes):
+        for cls_ind, cls in enumerate(self.classes):
+            if cls == '__background__':
+                continue
+            print('Writing {} VOC results file'.format(cls))
+            filename = self._get_voc_results_file_template().format(cls)
+            with open(filename, 'wt') as f:
+                for im_ind, index in enumerate(self.image_index):
+                    dets = all_boxes[cls_ind][im_ind]
+                    if dets == []:
+                        continue
+                    # the VOCdevkit expects 1-based indices
+                    for k in range(dets.shape[0]):
+                        f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
+                                format(index, dets[k, -1],
+                                       dets[k, 0] + 1, dets[k, 1] + 1,
+                                       dets[k, 2] + 1, dets[k, 3] + 1))
+
+    def _do_python_eval(self, output_dir='output'):
+
+        aps = []
+        # The PASCAL VOC metric changed in 2010
+        if not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        for i, cls in enumerate(self._classes):
+            if cls == '__background__':
+                continue
+            filename = self._get_voc_results_file_template().format(cls)
+            annopath = "/media/indoordesk/653ce34c-0c14-4427-8029-be7afe6d1989/test/Annotations/{:s}.xml"
+            a = os.listdir("/media/indoordesk/653ce34c-0c14-4427-8029-be7afe6d1989/test/Annotations")
+            a.sort()
+            imagesetfile = "/tmp/ron.txt"
+            import pickle
+            with open(imagesetfile, "w") as f:
+                for ff in a:
+                    f.write(ff.split(".")[0])
+                    f.write('\n')
+
+            rec, prec, ap = voc_eval(
+                filename, annopath, imagesetfile, cls, "/tmp/cachedir", ovthresh=0.5,
+                use_07_metric=True)
+            aps += [ap]
+            print('AP for {} = {:.4f}'.format(cls, ap))
+            with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
+                pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+        print('Mean AP = {:.4f}'.format(np.mean(aps)))
+        print('~~~~~~~~')
+        print('Results:')
+        for ap in aps:
+            print('{:.3f}'.format(ap))
+        print('{:.3f}'.format(np.mean(aps)))
+        print('~~~~~~~~')
+        print('')
+        print('--------------------------------------------------------------')
+        print('Results computed with the **unofficial** Python eval code.')
+        print('Results should be very close to the official MATLAB eval code.')
+        print('Recompute with `./tools/reval.py --matlab ...` for your paper.')
+        print('-- Thanks, The Management')
+        print('--------------------------------------------------------------')
+
+
+    def _get_voc_results_file_template(self):
+        return "/tmp/ron_{:s}.txt"
+        # VOCdevkit/results/VOC2007/Main/<comp_id>_det_test_aeroplane.txt
+        # filename = self._get_comp_id() + '_det_' + self._image_set + '_{:s}.txt'
+        # filedir = os.path.join(self._devkit_path, 'results', 'VOC' + self._year, 'Main')
+        # if not os.path.exists(filedir):
+        #     os.makedirs(filedir)
+        # path = os.path.join(filedir, filename)
+        #return path

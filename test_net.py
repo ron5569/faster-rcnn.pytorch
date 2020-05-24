@@ -34,10 +34,7 @@ from model.utils.net_utils import save_net, load_net, vis_detections
 from model.faster_rcnn.vgg16 import vgg16
 from model.faster_rcnn.resnet import resnet
 
-try:
-    xrange          # Python 2
-except NameError:
-    xrange = range  # Python 3
+
 
 
 def parse_args():
@@ -90,6 +87,10 @@ def parse_args():
   args = parser.parse_args()
   return args
 
+
+
+
+
 lr = cfg.TRAIN.LEARNING_RATE
 momentum = cfg.TRAIN.MOMENTUM
 weight_decay = cfg.TRAIN.WEIGHT_DECAY
@@ -126,8 +127,6 @@ if __name__ == '__main__':
       args.imdbval_name = "vg_150-50-50_minival"
       args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]']
   elif args.dataset == "bootch":
-      # train sizes: train, smalltrain, minitrain
-      # train scale: ['150-50-20', '150-50-50', '500-150-80', '750-250-150', '1750-700-450', '1600-400-20']
       args.imdb_name = "bootch_minitrain"
       args.imdbval_name = "bootch_minival"
       args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '2']
@@ -152,7 +151,7 @@ if __name__ == '__main__':
     raise Exception('There is no input directory for loading network from ' + input_dir)
   load_name = os.path.join(input_dir,
     'faster_rcnn_{}_{}_{}.pth'.format(args.checksession, args.checkepoch, args.checkpoint))
-
+  load_name = "/media/indoordesk/653ce34c-0c14-4427-8029-be7afe6d1989/faster_rcnn_1_9_8579.pth"
   # initilize the network here.
   if args.net == 'vgg16':
     fasterRCNN = vgg16(imdb.classes, pretrained=False, class_agnostic=args.class_agnostic)
@@ -213,12 +212,12 @@ if __name__ == '__main__':
 
   save_name = 'faster_rcnn_10'
   num_images = len(imdb.image_index)
-  all_boxes = [[[] for _ in xrange(num_images)]
-               for _ in xrange(imdb.num_classes)]
+  all_boxes = [[[] for _ in range(num_images)]
+               for _ in range(imdb.num_classes)]
 
   output_dir = get_output_dir(imdb, save_name)
   dataset = roibatchLoader(roidb, ratio_list, ratio_index, 1, \
-                        imdb.num_classes, training=False, normalize = False)
+                        imdb.num_classes, training=False, normalize = False, is_sort = True)
   dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
                             shuffle=False, num_workers=0,
                             pin_memory=True)
@@ -231,6 +230,7 @@ if __name__ == '__main__':
   fasterRCNN.eval()
   empty_array = np.transpose(np.array([[],[],[],[],[]]), (1,0))
   from tqdm import tqdm
+
   for i in tqdm(range(num_images)):
 
       data = next(data_iter)
@@ -279,7 +279,7 @@ if __name__ == '__main__':
       if vis:
           im = cv2.imread(imdb.image_path_at(i))
           im2show = np.copy(im)
-      for j in xrange(1, imdb.num_classes):
+      for j in range(1, imdb.num_classes):
           inds = torch.nonzero(scores[:,j]>thresh).view(-1)
           # if there is det
           if inds.numel() > 0:
@@ -304,10 +304,10 @@ if __name__ == '__main__':
       # Limit to max_per_image detections *over all classes*
       if max_per_image > 0:
           image_scores = np.hstack([all_boxes[j][i][:, -1]
-                                    for j in xrange(1, imdb.num_classes)])
+                                    for j in range(1, imdb.num_classes)])
           if len(image_scores) > max_per_image:
               image_thresh = np.sort(image_scores)[-max_per_image]
-              for j in xrange(1, imdb.num_classes):
+              for j in range(1, imdb.num_classes):
                   keep = np.where(all_boxes[j][i][:, -1] >= image_thresh)[0]
                   all_boxes[j][i] = all_boxes[j][i][keep, :]
 

@@ -20,7 +20,7 @@ import time
 import pdb
 
 class roibatchLoader(data.Dataset):
-  def __init__(self, roidb, ratio_list, ratio_index, batch_size, num_classes, training=True, normalize=None):
+  def __init__(self, roidb, ratio_list, ratio_index, batch_size, num_classes, training=True, normalize=None, is_sort = False):
     self._roidb = roidb
     self._num_classes = num_classes
     # we make the height of image consistent to trim_height, trim_width
@@ -34,6 +34,8 @@ class roibatchLoader(data.Dataset):
     self.batch_size = batch_size
     self.data_size = len(self.ratio_list)
 
+    if is_sort:
+        self.ratio_index.sort()
     # given the ratio_list, we want to make the ratio same for each batch.
     self.ratio_list_batch = torch.Tensor(self.data_size).zero_()
     num_batch = int(np.ceil(len(ratio_index) / batch_size))
