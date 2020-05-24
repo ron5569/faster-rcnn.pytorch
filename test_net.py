@@ -7,6 +7,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from utils import create_prediction_boxes, do_stage_2
+
 import _init_paths
 import os
 import sys
@@ -245,61 +247,42 @@ if __name__ == '__main__':
       rpn_loss_cls, rpn_loss_box, \
       RCNN_loss_cls, RCNN_loss_bbox, \
       rois_label = fasterRCNN(im_data, im_info, gt_boxes, num_boxes)
+      det_toc = time.time()
+      detect_time = det_toc - det_tic
+
 
       scores = cls_prob.data
       boxes = rois.data[:, :, 1:5]
 
-      if cfg.TEST.BBOX_REG:
-          # Apply bounding-box regression deltas
-          box_deltas = bbox_pred.data
-          if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
-          # Optionally normalize targets by a precomputed mean and stdev
-            if args.class_agnostic:
-                box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS).cuda() \
-                           + torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS).cuda()
-                box_deltas = box_deltas.view(1, -1, 4)
-            else:
-                box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS).cuda() \
-                           + torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS).cuda()
-                box_deltas = box_deltas.view(1, -1, 4 * len(imdb.classes))
+      pred_boxes, create_prediction_boxes_time = create_prediction_boxes(cfg,
+                                           args.class_agnostic,
+                                           len(imdb.classes),
+                                           boxes, scores,
+                                           im_info.data,
+                                           bbox_pred.data,
+                                           data[1][0][2].item())
 
-          pred_boxes = bbox_transform_inv(boxes, box_deltas, 1)
-          pred_boxes = clip_boxes(pred_boxes, im_info.data, 1)
-      else:
-          # Simply repeat the boxes, once for each class
-          pred_boxes = np.tile(boxes, (1, scores.shape[1]))
 
-      pred_boxes /= data[1][0][2].item()
 
       scores = scores.squeeze()
-      pred_boxes = pred_boxes.squeeze()
-      det_toc = time.time()
-      detect_time = det_toc - det_tic
       misc_tic = time.time()
       if vis:
           im = cv2.imread(imdb.image_path_at(i))
           im2show = np.copy(im)
-      for j in range(1, imdb.num_classes):
-          inds = torch.nonzero(scores[:,j]>thresh).view(-1)
-          # if there is det
-          if inds.numel() > 0:
-            cls_scores = scores[:,j][inds]
-            _, order = torch.sort(cls_scores, 0, True)
-            if args.class_agnostic:
-              cls_boxes = pred_boxes[inds, :]
-            else:
-              cls_boxes = pred_boxes[inds][:, j * 4:(j + 1) * 4]
 
-            cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
-            # cls_dets = torch.cat((cls_boxes, cls_scores), 1)
-            cls_dets = cls_dets[order]
-            keep = nms(cls_boxes[order, :], cls_scores[order], cfg.TEST.NMS)
-            cls_dets = cls_dets[keep.view(-1).long()]
-            if vis:
-              im2show = vis_detections(im2show, imdb.classes[j], cls_dets.cpu().numpy(), 0.3)
-            all_boxes[j][i] = cls_dets.cpu().numpy()
-          else:
-            all_boxes[j][i] = empty_array
+
+      state_2_time = do_stage_2(cfg,
+                               args.class_agnostic,
+                               thresh,
+                               vis,
+                               imdb.num_classes,
+                               pred_boxes,
+                               scores,
+                               all_boxes,
+                               empty_array,
+                               i)
+
+      print(f"prediction time {round(detect_time, 5)}, create_prediction_boxes_time {round(create_prediction_boxes_time, 5)}, state_2_time {round(state_2_time, 5)}")
 
       # Limit to max_per_image detections *over all classes*
       if max_per_image > 0:
@@ -314,9 +297,9 @@ if __name__ == '__main__':
       misc_toc = time.time()
       nms_time = misc_toc - misc_tic
 
-      sys.stdout.write('im_detect: {:d}/{:d} {:.3f}s {:.3f}s   \r' \
-          .format(i + 1, num_images, detect_time, nms_time))
-      sys.stdout.flush()
+      # sys.stdout.write('im_detect: {:d}/{:d} {:.3f}s {:.3f}s   \r' \
+      #     .format(i + 1, num_images, detect_time, nms_time))
+      # sys.stdout.flush()
 
       if vis:
           cv2.imwrite(f'/home/indoordesk/Desktop/images/result_{i}.png', im2show)
