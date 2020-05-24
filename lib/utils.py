@@ -66,6 +66,65 @@ def inference(data, variables, fasterRCNN, cfg, thresh):
 
 
 
+def create_prediction_boxes(cfg, is_class_agnostic, len_classes, boxes, scores, im_info_data, bbox_pred_data, idk):
+
+    det_tic = time.time()
+    if cfg.TEST.BBOX_REG:
+        # Apply bounding-box regression deltas
+        box_deltas = bbox_pred_data
+        if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
+            # Optionally normalize targets by a precomputed mean and stdev
+            if is_class_agnostic:
+                box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS).cuda() \
+                             + torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS).cuda()
+                box_deltas = box_deltas.view(1, -1, 4)
+            else:
+                box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_STDS).cuda() \
+                             + torch.FloatTensor(cfg.TRAIN.BBOX_NORMALIZE_MEANS).cuda()
+                box_deltas = box_deltas.view(1, -1, 4 * len_classes)
+
+        pred_boxes = bbox_transform_inv(boxes, box_deltas, 1)
+        pred_boxes = clip_boxes(pred_boxes, im_info_data, 1)
+    else:
+        # Simply repeat the boxes, once for each class
+        pred_boxes = np.tile(boxes, (1, scores.shape[1]))
+
+    pred_boxes /= idk
+
+
+    pred_boxes = pred_boxes.squeeze()
+    det_toc = time.time()
+    detect_time = det_toc - det_tic
+    return pred_boxes, detect_time
+
+
+def do_stage_2(cfg, is_class_agnostic, thresh, vis, imdb_num_classes,  pred_boxes, scores, all_boxes, empty_array, i,):
+    det_tic = time.time()
+    for j in range(1, imdb_num_classes):
+        inds = torch.nonzero(scores[:, j] > thresh).view(-1)
+        # if there is det
+        if inds.numel() > 0:
+            cls_scores = scores[:, j][inds]
+            _, order = torch.sort(cls_scores, 0, True)
+            if is_class_agnostic:
+                cls_boxes = pred_boxes[inds, :]
+            else:
+                cls_boxes = pred_boxes[inds][:, j * 4:(j + 1) * 4]
+
+            cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
+            # cls_dets = torch.cat((cls_boxes, cls_scores), 1)
+            cls_dets = cls_dets[order]
+            keep = nms(cls_boxes[order, :], cls_scores[order], cfg.TEST.NMS)
+            cls_dets = cls_dets[keep.view(-1).long()]
+            if vis:
+                im2show = vis_detections(im2show, imdb_num_classes[j], cls_dets.cpu().numpy(), 0.3)
+            all_boxes[j][i] = cls_dets.cpu().numpy()
+        else:
+            all_boxes[j][i] = empty_array
+    det_toc = time.time()
+    detect_time = det_toc - det_tic
+    return detect_time
+
 
 def bb_regresion_delta(bbox_pred, boxes, cfg):
     # Apply bounding-box regression deltas
