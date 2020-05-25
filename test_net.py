@@ -220,7 +220,7 @@ if __name__ == '__main__':
   output_dir = get_output_dir(imdb, save_name)
   dataset = roibatchLoader(roidb, ratio_list, ratio_index, 1, \
                         imdb.num_classes, training=False, normalize = False, is_sort = True)
-  dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
+  dataloader = torch.utils.data.DataLoader(dataset, batch_size=2,
                             shuffle=False, num_workers=0,
                             pin_memory=True)
 
@@ -254,33 +254,38 @@ if __name__ == '__main__':
       scores = cls_prob.data
       boxes = rois.data[:, :, 1:5]
 
-      pred_boxes, create_prediction_boxes_time = create_prediction_boxes(cfg,
-                                           args.class_agnostic,
-                                           len(imdb.classes),
-                                           boxes, scores,
-                                           im_info.data,
-                                           bbox_pred.data,
-                                           data[1][0][2].item())
+      for box, score, im_inf, bbox_pr in zip(boxes, scores, im_info, bbox_pred):
+          box = box.unsqueeze(0)
+          score = score.unsqueeze(0)
+          im_inf = im_inf.unsqueeze(0)
+          bbox_pr = bbox_pr.unsqueeze(0)
+          print(box.shape, boxes.shape)
+
+          pred_boxes, create_prediction_boxes_time = create_prediction_boxes(cfg,
+                                               args.class_agnostic,
+                                               len(imdb.classes),
+                                               box, score,
+                                               im_inf.data,
+                                               bbox_pr.data,
+                                               data[1][0][2].item())
+
+          score = score.squeeze()
+          misc_tic = time.time()
+          if vis:
+              im = cv2.imread(imdb.image_path_at(i))
+              im2show = np.copy(im)
 
 
-
-      scores = scores.squeeze()
-      misc_tic = time.time()
-      if vis:
-          im = cv2.imread(imdb.image_path_at(i))
-          im2show = np.copy(im)
-
-
-      state_2_time = do_stage_2(cfg,
-                               args.class_agnostic,
-                               thresh,
-                               vis,
-                               imdb.num_classes,
-                               pred_boxes,
-                               scores,
-                               all_boxes,
-                               empty_array,
-                               i)
+          state_2_time = do_stage_2(cfg,
+                                   args.class_agnostic,
+                                   thresh,
+                                   vis,
+                                   imdb.num_classes,
+                                   pred_boxes,
+                                   score,
+                                   all_boxes,
+                                   empty_array,
+                                   i)
 
       print(f"prediction time {round(detect_time, 5)}, create_prediction_boxes_time {round(create_prediction_boxes_time, 5)}, state_2_time {round(state_2_time, 5)}")
 
